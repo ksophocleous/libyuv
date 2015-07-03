@@ -8,6 +8,36 @@ project(libyuv)
 option(LIBYUV_TEST "Built unit tests" OFF)
 option(LIBYUV_BUILD_CONVERT "Build convert executable" OFF)
 option(LIBYUV_GEN_INSTALL "Generate install targets for libyuv" ON)
+option(LIBYUV_USE_LIBJPEG "Use libjpeg" ON)
+option(LIBYUV_USE_STATIC_LINKING "Use static linking of msvc runtime libraries" OFF)
+
+#==========================================
+
+foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+	string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/bin)
+	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/lib)
+	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/lib)
+endforeach(OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES)
+
+# switch from dynamic to static linking
+if(MSVC AND LIBYUV_USE_STATIC_LINKING)
+	foreach(flag_var
+		CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+		CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+
+		if(${flag_var} MATCHES "/MD")
+			string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+		endif(${flag_var} MATCHES "/MD")
+	endforeach(flag_var)
+endif()
+
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+#==========================================
 
 set(ly_base_dir ${CMAKE_CURRENT_LIST_DIR})
 set(ly_src_dir ${ly_base_dir}/source/)
@@ -99,11 +129,15 @@ if(LIBYUV_BUILD_CONVERT)
     target_link_libraries(convert ${ly_lib_name})
 endif()
 
-include(FindJPEG)
-if (JPEG_FOUND)
-    include_directories(${JPEG_INCLUDE_DIR})
-    target_link_libraries(convert ${JPEG_LIBRARY})
-    add_definitions(-DHAVE_JPEG)
+if(LIBYUV_USE_LIBJPEG)
+    include(FindJPEG)
+    if (JPEG_FOUND)
+        include_directories(${JPEG_INCLUDE_DIR})
+        if (LIBYUV_BUILD_CONVERT)
+            target_link_libraries(convert ${JPEG_LIBRARY})
+        endif()
+        add_definitions(-DHAVE_JPEG)
+    endif()
 endif()
 
 if(LIBYUV_TEST)
@@ -123,7 +157,7 @@ if(LIBYUV_TEST)
 
   add_executable(libyuv_unittest ${ly_unittest_sources})
   target_link_libraries(libyuv_unittest ${ly_lib_name} ${GTEST_LIBRARY} pthread)
-  if (JPEG_FOUND)
+  if (LIBYUV_USE_LIBJPEG AND JPEG_FOUND)
     target_link_libraries(libyuv_unittest ${JPEG_LIBRARY})
   endif()
 
