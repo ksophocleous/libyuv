@@ -1,27 +1,19 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
-project(libyuv)
+project(libyuv VERSION 1433)
 
 # CMakeLists for libyuv
 # Originally created for "roxlu build system" to compile libyuv on windows
-# Run with -DLIBYUV_TEST=ON to build unit tests
-option(LIBYUV_TEST "Built unit tests" OFF)
-option(LIBYUV_BUILD_CONVERT "Build convert executable" OFF)
-option(LIBYUV_GEN_INSTALL "Generate install targets for libyuv" ON)
-option(LIBYUV_USE_LIBJPEG "Use libjpeg" ON)
-option(LIBYUV_USE_STATIC_LINKING "Use static linking of msvc runtime libraries" OFF)
+# Run with -DBUILD_TEST=ON to build unit tests
+option(BUILD_TEST "Built unit tests" OFF)
+option(BUILD_CONVERT "Build convert executable" OFF)
+option(USE_LIBJPEG "Use libjpeg" ON)
+option(LINK_STATIC_RUNTIME "Use static linking of msvc runtime libraries" OFF)
 
 #==========================================
 
-foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
-	string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
-	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/bin)
-	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/lib)
-	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/lib)
-endforeach(OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES)
-
 # switch from dynamic to static linking
-if(MSVC AND LIBYUV_USE_STATIC_LINKING)
+if(MSVC AND LINK_STATIC_RUNTIME)
 	foreach(flag_var
 		CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
 		CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
@@ -32,17 +24,11 @@ if(MSVC AND LIBYUV_USE_STATIC_LINKING)
 	endforeach(flag_var)
 endif()
 
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-
 #==========================================
 
 set(ly_base_dir ${CMAKE_CURRENT_LIST_DIR})
 set(ly_src_dir ${ly_base_dir}/source/)
 set(ly_inc_dir ${ly_base_dir}/include)
-set(ly_lib_name "yuv")
 
 set(ly_source_files
     ${ly_src_dir}/compare.cc
@@ -122,25 +108,33 @@ set(ly_header_files
 
 include_directories(${ly_inc_dir})
 
-add_library(${ly_lib_name} STATIC ${ly_source_files} ${ly_header_files})
+add_library(libyuv STATIC ${ly_source_files} ${ly_header_files})
+set_target_properties(libyuv PROPERTIES
+    COMPILE_DEFINITIONS "_CRT_SECURE_NO_WARNINGS"
+    INCLUDE_DIRECTORIES "${ly_inc_dir}"
+    INTERFACE_INCLUDE_DIRECTORIES "$<INSTALL_INTERFACE:include>;$<BUILD_INTERFACE:${ly_inc_dir}>"
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    IMPORT_PREFIX ""
+    IMPORT_SUFFIX _imp${CMAKE_IMPORT_LIBRARY_SUFFIX}
+    PREFIX "")
 
-if(LIBYUV_BUILD_CONVERT)
+if(BUILD_CONVERT)
     add_executable(convert ${ly_base_dir}/util/convert.cc)
-    target_link_libraries(convert ${ly_lib_name})
+    target_link_libraries(convert libyuv)
 endif()
 
-if(LIBYUV_USE_LIBJPEG)
+if(USE_LIBJPEG)
     include(FindJPEG)
     if (JPEG_FOUND)
         include_directories(${JPEG_INCLUDE_DIR})
-        if (LIBYUV_BUILD_CONVERT)
+        if (BUILD_CONVERT)
             target_link_libraries(convert ${JPEG_LIBRARY})
         endif()
         add_definitions(-DHAVE_JPEG)
     endif()
 endif()
 
-if(LIBYUV_TEST)
+if(BUILD_TEST)
   find_library(GTEST_LIBRARY gtest)
   if(GTEST_LIBRARY STREQUAL "GTEST_LIBRARY-NOTFOUND")
     set(GTEST_SRC_DIR /usr/src/gtest)
@@ -156,8 +150,8 @@ if(LIBYUV_TEST)
   endif()
 
   add_executable(libyuv_unittest ${ly_unittest_sources})
-  target_link_libraries(libyuv_unittest ${ly_lib_name} ${GTEST_LIBRARY} pthread)
-  if (LIBYUV_USE_LIBJPEG AND JPEG_FOUND)
+  target_link_libraries(libyuv_unittest libyuv ${GTEST_LIBRARY} pthread)
+  if (USE_LIBJPEG AND JPEG_FOUND)
     target_link_libraries(libyuv_unittest ${JPEG_LIBRARY})
   endif()
 
@@ -166,8 +160,14 @@ if(LIBYUV_TEST)
   endif()
 endif()
 
-if(LIBYUV_GEN_INSTALL)
-    install(TARGETS ${ly_lib_name} DESTINATION lib)
-    install(FILES ${ly_header_files} DESTINATION include/libyuv)
-    install(FILES ${ly_inc_dir}/libyuv.h DESTINATION include/)
-endif()
+install(TARGETS libyuv
+    EXPORT ${CMAKE_PROJECT_NAME}Config
+    LIBRARY DESTINATION lib COMPONENT dev
+    ARCHIVE DESTINATION lib COMPONENT dev
+    RUNTIME DESTINATION bin COMPONENT bin)
+
+install(FILES ${ly_header_files} DESTINATION include/libyuv)
+install(FILES ${ly_inc_dir}/libyuv.h DESTINATION include/)
+
+install(EXPORT ${CMAKE_PROJECT_NAME}Config
+    DESTINATION lib/cmake)

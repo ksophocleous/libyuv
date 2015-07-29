@@ -31,3 +31,6 @@ libgtest.a
 libyuv.a
 libyuv_unittest
 cmake_install.cmake
+
+# out of source cmake build tree
+/build-*/
